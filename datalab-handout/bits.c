@@ -153,7 +153,8 @@ int bitXor(int x, int y) {
  */
 int tmin(void) {
 
-  return 2;
+  // 
+  return 1 << 31;
 
 }
 //2
@@ -165,7 +166,12 @@ int tmin(void) {
  *   Rating: 1
  */
 int isTmax(int x) {
-  return 2;
+  // Tmax = 0111...   ; Tmin = 1000... ; 因此 T + 1 = ~Tmax， 发生正溢出时变为 1000... ,同于自身按位取反
+  // 因此可得 !((x + 1) ^ (~x)), 两者相同则按位与得 0，再 !0 = 1. 但是 -1 称为例外。将 -1 进行处置即可。
+  int y = x + 1;
+
+  // 得出 y 进行返回，发生正溢出 == ~x ； == -1. 则使用 !!y 去掉,因此时 y = 0，进行舍去即可。
+  return !(y ^ ~x) & !!y;
 }
 /* 
  * allOddBits - return 1 if all odd-numbered bits in word set to 1
@@ -176,7 +182,13 @@ int isTmax(int x) {
  *   Rating: 2
  */
 int allOddBits(int x) {
-  return 2;
+  // 得到一个 mask = 101010... 31 位的数，与 x 按位与，得到 x 的奇数位的掩码，再让 x 的奇数位与 mask 异或，判断是否相同，返回结果
+
+  // 得到 mask  = 10101010...
+  int mask = 0xAA;
+  mask = (mask << 8) | mask;
+  mask = (mask << 16) | mask;
+  return !((x & mask) ^ mask);
 }
 /* 
  * negate - return -x 
