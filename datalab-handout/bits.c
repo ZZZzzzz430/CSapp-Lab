@@ -198,7 +198,7 @@ int allOddBits(int x) {
  *   Rating: 2
  */
 int negate(int x) {
-  return 2;
+  return ~x + 1;
 }
 //3
 /* 
@@ -211,7 +211,13 @@ int negate(int x) {
  *   Rating: 3
  */
 int isAsciiDigit(int x) {
-  return 2;
+  // 当  ox30 <= x <= 0x39 返回 1.也就是 x 在 '0' - '9' ASCLL 码
+  // 计算 正负
+  int lower = x + (~0x30 + 1);
+  int upper = 0x39 + (~x + 1);
+
+  // 右移 31 位取符号位，要求两个都大于 0,也就是符号位都是 0
+  return !((lower >> 31) | (upper >> 31));
 }
 /* 
  * conditional - same as x ? y : z 
@@ -221,7 +227,10 @@ int isAsciiDigit(int x) {
  *   Rating: 3
  */
 int conditional(int x, int y, int z) {
-  return 2;
+  // 将 x 变为 0 or 1 ，得到 mask ，同时将 mask 变成全 0 ~mask 则是全1  
+ int mask = ~!!x + 1;
+  
+  return (mask & y) | (~mask & z);
 }
 /* 
  * isLessOrEqual - if x <= y  then return 1, else return 0 
@@ -231,7 +240,17 @@ int conditional(int x, int y, int z) {
  *   Rating: 3
  */
 int isLessOrEqual(int x, int y) {
-  return 2;
+  // xy 都为正数 y +( ~x + 1),再右移符号看正负，此时不会发生溢出
+  int diff = y + (~x + 1);
+  diff = diff >> 31 & 1; // 和 1 按位与，当为负数返回1，为正数返回 0
+
+  // x y 有个是负数，会导致溢出，因此直接右移符号，当 y 为正，x 为负，则一定 y > x,反之一定不成立
+  int sx = (x >> 31) & 1;
+  int sy = (y >> 31) & 1;
+  int signDiff = sx ^ sy; // 异或 = 1  得到 xy 异号， 0 则同号
+
+  // 两者同号，并且 y - x 也
+  return (signDiff & sx) | (!signDiff & !diff);
 }
 //4
 /* 
@@ -243,7 +262,7 @@ int isLessOrEqual(int x, int y) {
  *   Rating: 4 
  */
 int logicalNeg(int x) {
-  return 2;
+  return ((x | (~x + 1)) >> 31) + 1;
 }
 /* howManyBits - return the minimum number of bits required to represent x in
  *             two's complement
@@ -258,7 +277,29 @@ int logicalNeg(int x) {
  *  Rating: 4
  */
 int howManyBits(int x) {
-  return 0;
+    int sign = x >> 31;
+    int b16, b8, b4, b2, b1, b0;
+
+    x = x ^ sign;
+
+    b16 = !!(x >> 16) << 4;
+    x = x >> b16;
+
+    b8 = !!(x >> 8) << 3;
+    x = x >> b8;
+
+    b4 = !!(x >> 4) << 2;
+    x = x >> b4;
+
+    b2 = !!(x >> 2) << 1;
+    x = x >> b2;
+
+    b1 = !!(x >> 1);
+    x = x >> b1;
+
+    b0 = x;
+
+    return b16 + b8 + b4 + b2 + b1 + b0 + 1;
 }
 //float
 /* 
@@ -266,19 +307,7 @@ int howManyBits(int x) {
  *   floating point argument f.
  *   Both the argument and result are passed as unsigned int's, but
  *   they are to be interpreted as the bit-level representation of
- *   single-precision floating point values.
- *   When argument is NaN, return argument
- *   Legal ops: Any integer/unsigned operations incl. ||, &&. also if, while
- *   Max ops: 30
- *   Rating: 4
- */
-unsigned floatScale2(unsigned uf) {
-  return 2;
-}
-/* 
- * floatFloat2Int - Return bit-level equivalent of expression (int) f
- *   for floating point argument f.
- *   Argument is passed as unsigned int, but
+ *   single-pr2 * f, but
  *   it is to be interpreted as the bit-level representation of a
  *   single-precision floating point value.
  *   Anything out of range (including NaN and infinity) should return
@@ -287,9 +316,30 @@ unsigned floatScale2(unsigned uf) {
  *   Max ops: 30
  *   Rating: 4
  */
-int floatFloat2Int(unsigned uf) {
-  return 2;
+int floatFloat2Int (unsigned uf) {
+    unsigned sign = uf & 0x80000000;
+    unsigned exp  = uf & 0x7f800000;
+    unsigned frac = uf & 0x007fffff;
+
+    // NaN 或无穷大，直接返回原值
+    if (exp == 0x7f800000) {
+        return uf;
+    }
+
+    // 0 或非规格化数，尾数左移一位
+    if (exp == 0) {
+        return sign | (frac << 1);
+    }
+
+    // 最大规格化阶码，再乘 2 会溢出成无穷大
+    if (exp == 0x7f000000) {
+        return sign | 0x7f800000;
+    }
+
+    // 普通规格化数，阶码加 1
+    return sign | (exp + 0x00800000) | frac;
 }
+
 /* 
  * floatPower2 - Return bit-level equivalent of the expression 2.0^x
  *   (2.0 raised to the power x) for any 32-bit integer x.
@@ -304,5 +354,45 @@ int floatFloat2Int(unsigned uf) {
  *   Rating: 4
  */
 unsigned floatPower2(int x) {
-    return 2;
+    if (x < -149) {
+        return 0;
+    }
+
+    if (x < -126) {
+        return 1 << (x + 149);
+    }
+
+    if (x > 127) {
+        return 0x7f800000;
+    }
+
+    return (x + 127) << 23;
+
+}
+
+unsigned floatScale2(unsigned uf) {
+    unsigned sign = uf & 0x80000000;
+    unsigned exp = uf & 0x7f800000;
+    unsigned frac = uf & 0x007fffff;
+
+    // NaN 或无穷大，直接返回原值
+    if (exp == 0x7f800000) {
+        return uf;
+    }
+
+    // 非规格化数，指数部分为 0
+    // 乘以 2 等价于 frac 左移一位
+    if (exp == 0) {
+        return sign | (frac << 1);
+    }
+
+    // 规格化数，乘以 2 等价于指数 + 1
+    exp = exp + 0x00800000;
+
+    // 如果指数变成全 1，说明溢出到无穷大，尾数清零
+    if (exp == 0x7f800000) {
+        frac = 0;
+    }
+
+    return sign | exp | frac;
 }
